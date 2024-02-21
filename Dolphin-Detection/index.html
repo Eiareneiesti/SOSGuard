@@ -3,162 +3,226 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dolphin Vocalization Classification</title>
+    <title>Audio Capture</title>
 </head>
 <body>
-    <div id="main">
-        <h1>Dolphin Vocalization Classification</h1>
-        <div id="classification-results">
-            <h2>Classification Results</h2>
-            <table id="results-table" border="1">
-                <tr>
-                    <th>Label</th>
-                    <th>Confidence</th>
-                </tr>
-            </table>
-        </div>
-        <div id="controls">
-            <button id="start-recording">Start Recording</button>
-            <button id="stop-recording" disabled>Stop Recording</button>
-        </div>
+  <div id="main">
+
+  
+<canvas id="myGrowCanvas" style="position:relative; left:0px; top:0px; width:3000px; height:2000px; " ></canvas> <br>  
+    
+<table border=1 style="position:absolute; left:800px; top:0px;  ">
+<tr><td>
+  
+  
+<div id="description">
+        <div id="description-title" style="font-size:30px">Demo Edge Impulse WASM</div>
+      
+        Frequency ms <input type=text id="myText01" value=130 onChange="{
+             myFrequencyMs = this.value
+             clearInterval(myTimer01)
+            myTimer01 = setInterval(myPictureNow, myFrequencyMs);
+          }"><br>
+      (square) width/height: <input type=text value="96" size=5 id="myWidthHeight" READONLY>  <br>    
+
+      
+  </td></tr></table>
+    
+       <button onclick="startRecording()">Start Recording</button>
+       <button onclick="stopRecording()">Stop Recording</button>
+  
     </div>
+    
+</body>
+    
+ <script src="edge-impulse-standalone.js"></script>
+ <audio controls id="audioElement"></audio>
 
-    <script src="edge-impulse-standalone.js"></script>
-    <script>
-        let audioContext;
-        let audioRecorder;
-        let audioStream;
+        let mediaRecorder;
+        let recordedChunks = [];
+        let audioElement = document.getElementById('audioElement');
+    
+    async function startRecording() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = handleDataAvailable;
+            mediaRecorder.start();
+        } catch (err) {
+            console.error('Error accessing media devices:', err);
+        }
+    }
 
-        let classifierInitialized = false;
+    function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+    }
 
-        // Load the Edge Impulse classifier module
-        Module.onRuntimeInitialized = function() {
-            classifierInitialized = true;
+    function handleDataAvailable(event) {
+        if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+            const blob = new Blob(recordedChunks, { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+            audioElement.src = url;
+        }
+    }
+
+    const classifyDolphinSound = async () => {
+    try {
+        var classifier = new EdgeImpulseClassifier();
+        await classifier.init();
+
+        // You can update the UI with project information if needed
+        let project = classifier.getProjectInfo();
+        document.querySelector('h1').textContent = project.owner + ' / ' + project.name + ' (version ' + project.deploy_version + ')';
+
+        // Event listener for running inference/classification
+        document.querySelector('#run-inference').onclick = () => {
+            try {
+                // Assuming you have an input field for features or data
+                let features = document.querySelector('#features').value.split(',').map(x => Number(x.trim()));
+
+                // Perform classification
+                let res = classifier.classify(features);
+
+                // Update UI with classification results
+                document.querySelector('#results').textContent = JSON.stringify(res, null, 4);
+            } catch (ex) {
+                alert('Failed to classify: ' + (ex.message || ex.toString()));
+            }
+        };
+    } catch (error) {
+        console.error('Error initializing classifier:', error);
+    }
+};
+
+// Immediately invoke the function to start classification
+classifyDolphinSound();
+
+// Classifier module
+let classifierInitialized = false;
+Module.onRuntimeInitialized = function() {
+    classifierInitialized = true;
+};
+
+class EdgeImpulseClassifier {
+    _initialized = false;
+
+    init() {
+        if (classifierInitialized === true) return Promise.resolve();
+
+        return new Promise((resolve) => {
+            Module.onRuntimeInitialized = () => {
+                classifierInitialized = true;
+                Module.init();
+                resolve();
+            };
+        });
+    }
+
+    getProjectInfo() {
+        if (!classifierInitialized) throw new Error('Module is not initialized');
+        return Module.get_project();
+    }
+
+    classify(rawData, debug = false) {
+        if (!classifierInitialized) throw new Error('Module is not initialized');
+
+        let props = Module.get_properties();
+
+        const obj = this._arrayToHeap(rawData);
+        let ret = Module.run_classifier(obj.buffer.byteOffset, rawData.length, debug);
+        Module._free(obj.ptr);
+
+        if (ret.result !== 0) {
+            throw new Error('Classification failed (err code: ' + ret.result + ')');
+        }
+
+
+        let jsResult = {
+            anomaly: ret.anomaly,
+            visual_ad_max: ret.visual_ad_max,
+            visual_ad_mean: ret.visual_ad_mean,
+            results: []
         };
 
-        class EdgeImpulseClassifier {
-            // Initialize the classifier
-            init() {
-                if (classifierInitialized === true) return Promise.resolve();
-
-                return new Promise((resolve) => {
-                    Module.onRuntimeInitialized = () => {
-                        resolve();
-                        classifierInitialized = true;
-                    };
-                });
+        for (let cx = 0; cx < ret.size(); cx++) {
+            let c = ret.get(cx);
+            if (props.model_type === 'object_detection' || props.model_type === 'constrained_object_detection' || props.model_type === 'visual_anomaly') {
+                jsResult.results.push({ label: c.label, value: c.value, x: c.x, y: c.y, width: c.width, height: c.height });
             }
-
-            // Classify audio data
-            classify(rawData) {
-                if (!classifierInitialized) throw new Error('Module is not initialized');
-
-                const obj = this._arrayToHeap(rawData);
-                const ret = Module.run_classifier(obj.buffer.byteOffset, rawData.length);
-                Module._free(obj.ptr);
-
-                if (ret.result !== 0) {
-                    throw new Error('Classification failed (err code: ' + ret.result + ')');
-                }
-
-                const results = {
-                    anomaly: ret.anomaly,
-                    classifications: []
-                };
-
-                for (let i = 0; i < ret.size(); i++) {
-                    const c = ret.get(i);
-                    results.classifications.push({ label: c.label, value: c.value });
-                    c.delete();
-                }
-
-                ret.delete();
-
-                return results;
+            else {
+                jsResult.results.push({ label: c.label, value: c.value });
             }
-
-            _arrayToHeap(data) {
-                const typedArray = new Float32Array(data);
-                const numBytes = typedArray.length * typedArray.BYTES_PER_ELEMENT;
-                const ptr = Module._malloc(numBytes);
-                const heapBytes = new Uint8Array(Module.HEAPU8.buffer, ptr, numBytes);
-                heapBytes.set(new Uint8Array(typedArray.buffer));
-                return { ptr: ptr, buffer: heapBytes };
-            }
+            c.delete();
         }
 
-        // Initialize the classifier
-        const classifier = new EdgeImpulseClassifier();
-        classifier.init().then(() => {
-            console.log('Classifier initialized successfully');
-        }).catch(error => {
-            console.error('Failed to initialize classifier:', error);
-        });
+        ret.delete();
 
-        // Function to start recording audio
-        function startRecording() {
-            navigator.mediaDevices.getUserMedia({ audio: true })
-                .then(stream => {
-                    audioStream = stream;
-                    audioContext = new AudioContext();
-                    audioRecorder = new Recorder(audioContext.createMediaStreamSource(stream));
-                    audioRecorder.record();
-                    document.getElementById('start-recording').disabled = true;
-                    document.getElementById('stop-recording').disabled = false;
-                })
-                .catch(error => {
-                    console.error('Failed to get user media:', error);
-                });
+        return jsResult;
+    }
+
+    classifyContinuous(rawData, enablePerfCal = true) {
+        if (!classifierInitialized) throw new Error('Module is not initialized');
+
+        let props = Module.get_properties();
+
+        const obj = this._arrayToHeap(rawData);
+        let ret = Module.run_classifier_continuous(obj.buffer.byteOffset, rawData.length, false, enablePerfCal);
+        Module._free(obj.ptr);
+
+        if (ret.result !== 0) {
+            throw new Error('Classification failed (err code: ' + ret.result + ')');
         }
 
-        // Function to stop recording audio and classify
-        function stopRecording() {
-            audioRecorder.stop();
-            audioStream.getAudioTracks()[0].stop();
-            audioRecorder.exportWAV(blob => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const audioData = new Float32Array(reader.result);
-                    classifyAudio(audioData);
-                };
-                reader.readAsArrayBuffer(blob);
-            });
-            document.getElementById('start-recording').disabled = false;
-            document.getElementById('stop-recording').disabled = true;
+        let jsResult = {
+            anomaly: ret.anomaly,
+            results: []
+        };
+
+        for (let cx = 0; cx < ret.size(); cx++) {
+            let c = ret.get(cx);
+            if (props.model_type === 'object_detection' || props.model_type === 'constrained_object_detection') {
+                jsResult.results.push({ label: c.label, value: c.value, x: c.x, y: c.y, width: c.width, height: c.height });
+            }
+            else {
+                jsResult.results.push({ label: c.label, value: c.value });
+            }
+            c.delete();
         }
 
-        // Function to classify audio data
-        function classifyAudio(audioData) {
-            try {
-                const results = classifier.classify(audioData);
-                updateClassificationResults(results);
-            } catch (error) {
-                console.error('Classification error:', error);
+        if (props.has_visual_anomaly_detection) {
+            jsResult.visual_ad_max = ret.visual_ad_max;
+            jsResult.visual_ad_mean = ret.visual_ad_mean;
+            jsResult.visual_ad_grid_cells = [];
+            for (let cx = 0; cx < ret.visual_ad_grid_cells_size(); cx++) {
+                let c = ret.visual_ad_grid_cells_get(cx);
+                jsResult.visual_ad_grid_cells.push({ label: c.label, value: c.value, x: c.x, y: c.y, width: c.width, height: c.height });
+                c.delete();
             }
         }
 
-        // Function to update the classification results in the UI
-        function updateClassificationResults(results) {
-            const table = document.getElementById('results-table');
-            table.innerHTML = `
-                <tr>
-                    <th>Label</th>
-                    <th>Confidence</th>
-                </tr>
-            `;
-            results.classifications.forEach(classification => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${classification.label}</td>
-                    <td>${classification.value.toFixed(3)}</td>
-                `;
-                table.appendChild(row);
-            });
-        }
+        ret.delete();
 
-        // Attach event listeners to recording controls
-        document.getElementById('start-recording').addEventListener('click', startRecording);
-        document.getElementById('stop-recording').addEventListener('click', stopRecording);
-    </script>
-</body>
-</html>
+        return jsResult;
+    }
+
+    getProperties() {
+        return Module.get_properties();
+    }
+
+    _arrayToHeap(data) {
+        let typedArray = new Float32Array(data);
+        let numBytes = typedArray.length * typedArray.BYTES_PER_ELEMENT;
+        let ptr = Module._malloc(numBytes);
+        let heapBytes = new Uint8Array(Module.HEAPU8.buffer, ptr, numBytes);
+        heapBytes.set(new Uint8Array(typedArray.buffer));
+        return { ptr: ptr, buffer: heapBytes };
+    }
+}
+                                    
+</script>
+
+
+    
