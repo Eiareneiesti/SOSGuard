@@ -66,56 +66,56 @@
         </div>
     </div>
 
-    <script type="text/javascript" src="recorder.js"></script>
-    <script type="text/javascript" src="microphone.js"></script>
-    <script type="text/javascript" src="edge-impulse-standalone.js"></script>
-    <script type="text/javascript" src="classifier.js"></script>
+    <script type="text/javascript" src="Addons/recorder.js"></script>
+    <script type="text/javascript" src="Addons/microphone.js"></script>
+    <script type="text/javascript" src="Addons/edge-impulse-standalone.js"></script>
+    <script type="text/javascript" src="Addons/classifier.js"></script>
     <script>
         const sensor = new MicrophoneSensor();
         const grantPermissions = document.querySelector('#grant-permissions-button');
-
         const views = {
             permission: document.querySelector('#permission-view'),
             inference: document.querySelector('#inferencing-in-progress'),
             inferenceResult: document.querySelector('#inferencing-result')
         };
-
-        // store results here so we don't invoke the classifier again for the same window
         const classifyCache = {};
 
-        grantPermissions.onclick = ev => {
+        grantPermissions.onclick = async ev => {
             ev.preventDefault();
 
-            if (!sensor.hasSensor()) {
-                return alert('Your device does not seem to have a microphone');
-            }
-            
-         sensor.checkPermissions(true).then(async (result) => {
-            if (result) {
-                const classifier = window.classifier = new EdgeImpulseClassifier();
+            try {
+                if (!sensor.hasSensor()) {
+                    throw new Error('Device does not have a microphone');
+                }
+
+                const result = await sensor.checkPermissions(true);
+
+                if (!result) {
+                    throw new Error('User rejected microphone permissions');
+                }
+
+                const classifier = new EdgeImpulseClassifier();
                 await classifier.init();
 
-                 views.permission.style.display = 'none';
-                 views.inference.style.display = '';
+                views.permission.style.display = 'none';
+                views.inference.style.display = '';
 
-                 let allData = [];
-                 let allClassifications = [];
-                 let showerStarted = null;
+                let allData = [];
+                let allClassifications = [];
+                let showerStarted = null;
 
-                 const onSampleComplete = (obj) => {
-                     sensor.takeSample(1000, 16000, () => {}).then(onSampleComplete);
+                const onSampleComplete = async (obj) => {
+                    try {
+                        await sensor.takeSample(1000, 16000, () => {});
+                        allData = allData.concat(obj.values);
+                        console.log(Date.now(), 'allData is', allData.length / 16000, 'seconds');
 
-                     allData = allData.concat(obj.values);
-                     console.log(Date.now(), 'allData is', allData.length / 16000, 'seconds');
+                        const windowSize = 5 * 16000;
+                        const classifyWindowLength = 1 * 16000;
+                        const classifyWindowOverlap = 0.25 * 16000;
 
-                     const windowSize = 5 * 16000;
-                     const windowStep = 1 * 16000;
-                     const classifyWindowLength = 1 * 16000;
-                     const classifyWindowOverlap = 0.25 * 16000;
-
-                        // if we have at least one window of data...
-                     if (allData.length >= windowSize) {
-                        let window = allData.slice(allData.length - windowSize, allData.length);
+                        if (allData.length >= windowSize) {
+                            let window = allData.slice(allData.length - windowSize, allData.length);
 
                         let GlobicephalaMacrorhynchusCount = 0;
                         let GrampusGriseusCount = 0;
@@ -170,21 +170,18 @@
                             allClassifications.push('uncertain');
                             // totalUncertain++;
                         }
-                        
-                     }  
-             };
-                    // start up the sensor
-                    await sensor.takeSample(200, 16000, () => {});
+                      } catch (error) {
+                        console.error('Error in onSampleComplete:', error);
+                    }
+                };
 
-                    // then take 1s of data
-                    sensor.takeSample(1000, 16000, () => {}).then(onSampleComplete);
-                }
-                else {
-                    alert('User has rejected microphone permissions');
-                }
-            });
-         }
-        </script>
-    </body>
-    </html>
-                            
+                await sensor.takeSample(200, 16000, () => {});
+                sensor.takeSample(1000, 16000, () => {}).then(onSampleComplete);
+            } catch (error) {
+                console.error('Error in grantPermissions.onclick:', error);
+                alert(error.message);
+            }
+        };
+    </script>
+</body>
+</html>
