@@ -3,162 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dolphin Vocalization Classification</title>
+    <title>Dolphin Vocalization Detection</title>
 </head>
 <body>
     <div id="main">
-        <h1>Dolphin Vocalization Classification</h1>
-        <div id="classification-results">
-            <h2>Classification Results</h2>
-            <table id="results-table" border="1">
-                <tr>
-                    <th>Label</th>
-                    <th>Confidence</th>
-                </tr>
-            </table>
+        <!-- UI elements for microphone recording and classification -->
+        <div>
+            <button id="startRecording">Start Recording</button>
+            <button id="stopRecording">Stop Recording</button>
         </div>
-        <div id="controls">
-            <button id="start-recording">Start Recording</button>
-            <button id="stop-recording" disabled>Stop Recording</button>
-        </div>
+        <div id="classificationResults"></div>
     </div>
 
-    <script src="edge-impulse-standalone.js"></script>
+    <!-- Script to handle microphone recording and classification -->
     <script>
-        let audioContext;
-        let audioRecorder;
-        let audioStream;
+        let mediaRecorder;
+        let audioChunks = [];
+        let edgeImpulseClassifier;
 
-        let classifierInitialized = false;
+        const startRecording = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
 
-        // Load the Edge Impulse classifier module
-        Module.onRuntimeInitialized = function() {
-            classifierInitialized = true;
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+
+                    // Classify the recorded audio
+                    classifyAudio(audioUrl);
+                };
+
+                mediaRecorder.start();
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+            }
         };
 
-        class EdgeImpulseClassifier {
-            // Initialize the classifier
-            init() {
-                if (classifierInitialized === true) return Promise.resolve();
-
-                return new Promise((resolve) => {
-                    Module.onRuntimeInitialized = () => {
-                        resolve();
-                        classifierInitialized = true;
-                    };
-                });
+        const stopRecording = () => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
             }
+        };
 
-            // Classify audio data
-            classify(rawData) {
-                if (!classifierInitialized) throw new Error('Module is not initialized');
-
-                const obj = this._arrayToHeap(rawData);
-                const ret = Module.run_classifier(obj.buffer.byteOffset, rawData.length);
-                Module._free(obj.ptr);
-
-                if (ret.result !== 0) {
-                    throw new Error('Classification failed (err code: ' + ret.result + ')');
-                }
-
-                const results = {
-                    anomaly: ret.anomaly,
-                    classifications: []
-                };
-
-                for (let i = 0; i < ret.size(); i++) {
-                    const c = ret.get(i);
-                    results.classifications.push({ label: c.label, value: c.value });
-                    c.delete();
-                }
-
-                ret.delete();
-
-                return results;
-            }
-
-            _arrayToHeap(data) {
-                const typedArray = new Float32Array(data);
-                const numBytes = typedArray.length * typedArray.BYTES_PER_ELEMENT;
-                const ptr = Module._malloc(numBytes);
-                const heapBytes = new Uint8Array(Module.HEAPU8.buffer, ptr, numBytes);
-                heapBytes.set(new Uint8Array(typedArray.buffer));
-                return { ptr: ptr, buffer: heapBytes };
-            }
-        }
-
-        // Initialize the classifier
-        const classifier = new EdgeImpulseClassifier();
-        classifier.init().then(() => {
-            console.log('Classifier initialized successfully');
-        }).catch(error => {
-            console.error('Failed to initialize classifier:', error);
-        });
-
-        // Function to start recording audio
-        function startRecording() {
-            navigator.mediaDevices.getUserMedia({ audio: true })
-                .then(stream => {
-                    audioStream = stream;
-                    audioContext = new AudioContext();
-                    audioRecorder = new Recorder(audioContext.createMediaStreamSource(stream));
-                    audioRecorder.record();
-                    document.getElementById('start-recording').disabled = true;
-                    document.getElementById('stop-recording').disabled = false;
-                })
-                .catch(error => {
-                    console.error('Failed to get user media:', error);
-                });
-        }
-
-        // Function to stop recording audio and classify
-        function stopRecording() {
-            audioRecorder.stop();
-            audioStream.getAudioTracks()[0].stop();
-            audioRecorder.exportWAV(blob => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const audioData = new Float32Array(reader.result);
-                    classifyAudio(audioData);
-                };
-                reader.readAsArrayBuffer(blob);
-            });
-            document.getElementById('start-recording').disabled = false;
-            document.getElementById('stop-recording').disabled = true;
-        }
-
-        // Function to classify audio data
-        function classifyAudio(audioData) {
+        const classifyAudio = async (audioUrl) => {
             try {
-                const results = classifier.classify(audioData);
-                updateClassificationResults(results);
+                const audioData = await fetch(audioUrl).then(response => response.arrayBuffer());
+                const result = await edgeImpulseClassifier.classify(audioData);
+
+                displayClassificationResults(result);
             } catch (error) {
-                console.error('Classification error:', error);
+                console.error('Error classifying audio:', error);
             }
-        }
+        };
 
-        // Function to update the classification results in the UI
-        function updateClassificationResults(results) {
-            const table = document.getElementById('results-table');
-            table.innerHTML = `
-                <tr>
-                    <th>Label</th>
-                    <th>Confidence</th>
-                </tr>
-            `;
-            results.classifications.forEach(classification => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${classification.label}</td>
-                    <td>${classification.value.toFixed(3)}</td>
-                `;
-                table.appendChild(row);
-            });
-        }
+        const displayClassificationResults = (results) => {
+            const classificationResultsElement = document.getElementById('classificationResults');
+            classificationResultsElement.innerHTML = JSON.stringify(results, null, 2);
+        };
 
-        // Attach event listeners to recording controls
-        document.getElementById('start-recording').addEventListener('click', startRecording);
-        document.getElementById('stop-recording').addEventListener('click', stopRecording);
+        const loadEdgeImpulseClassifier = async () => {
+            try {
+                // Initialize the Edge Impulse classifier
+                edgeImpulseClassifier = new EdgeImpulseClassifier();
+                await edgeImpulseClassifier.init();
+
+                // Display ready message
+                console.log('Edge Impulse classifier initialized and ready.');
+            } catch (error) {
+                console.error('Error initializing Edge Impulse classifier:', error);
+            }
+        };
+
+        // Load Edge Impulse classifier on page load
+        window.onload = loadEdgeImpulseClassifier;
+
+        // Event listeners for recording buttons
+        document.getElementById('startRecording').addEventListener('click', startRecording);
+        document.getElementById('stopRecording').addEventListener('click', stopRecording);
     </script>
 </body>
 </html>
