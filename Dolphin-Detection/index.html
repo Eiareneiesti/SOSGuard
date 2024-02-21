@@ -1,61 +1,92 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Classification</title>
-</head>
 <body>
   <div id="main">
-    <audio id="audio" controls></audio>
-    <div id="classification-results"></div>
-  </div>
 
-  <script src="edge-impulse-standalone.js"></script>
+    <table border=1 style="position:absolute; left:800px; top:0px;">
+      <tr>
+        <td>
+          Version 0.9.19 <br>
 
-  <script>
-    const classifier = new EdgeImpulseClassifier();
-    let audioContext;
-    let microphone;
+          <div id="description">
+            <div id="description-title" style="font-size:30px">Demo Edge Impulse WASM</div>
 
-    async function setupMicrophone() {
-      audioContext = new AudioContext();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      microphone = audioContext.createMediaStreamSource(stream);
-    }
+            <div id="myDiv01" style="font-size:30px"></div>
+            <input type=checkbox id="myCheckbox01"><br>
+            Stop All Sounds <input type=checkbox id="myCheckbox02sounds"><br>
+            <br>
+            Microphone: <select id="mySelect" onChange="setupPage()">
+              <option value="user">Internal Microphone</option>
+              <option value="environment">External Microphone</option>
+            </select><br>
+          </div>
 
-    async function startClassification() {
-      await classifier.init();
+          <audio id="audio"></audio>
 
-      microphone.connect(audioContext.destination);
+        </td>
+      </tr>
+    </table>
 
-      microphone.onaudioprocess = async function (event) {
-        const inputData = event.inputBuffer.getChannelData(0);
-        const results = await classifier.classify(inputData);
-        displayResults(results);
+    <script src="edge-impulse-standalone.js"></script>
+
+    <script>
+      let classifier = new EdgeImpulseClassifier();
+      classifier.init().then(() => {
+        setupPage();
+      });
+
+      const setupPage = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          const audio = document.getElementById('audio');
+          audio.srcObject = stream;
+          audio.play();
+
+          processAudio();
+        } catch (error) {
+          console.error('Error accessing microphone:', error);
+        }
       };
-    }
 
-    function displayResults(results) {
-      const classificationResultsDiv = document.getElementById('classification-results');
-      classificationResultsDiv.innerHTML = '';
+      const processAudio = async () => {
+        const audio = document.getElementById('audio');
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(audio.srcObject);
 
-      const table = document.createElement('table');
-      for (const result of results.results) {
-        const row = table.insertRow();
-        const labelCell = row.insertCell(0);
-        const valueCell = row.insertCell(1);
-        labelCell.textContent = result.label;
-        valueCell.textContent = result.value.toFixed(3);
-      }
-      classificationResultsDiv.appendChild(table);
-    }
+        // Convert audio to format required by the model
+        // (replace with your specific conversion logic)
+        const audioData = await convertAudioToFloat32Array(source);
 
-    // Start the microphone and classification process when the page loads
-    window.onload = async function () {
-      await setupMicrophone();
-      await startClassification();
-    };
-  </script>
+        const results = await classifier.classify(audioData);
+
+        // Display classification results
+        displayResults(results);
+
+        processAudio(); // loop for continuous processing
+      };
+
+      const convertAudioToFloat32Array = (source) => {
+        // Implement your audio conversion logic here
+        // based on the model's input requirements
+
+        return new Promise((resolve) => {
+          const analyser = new AnalyserNode(audioContext, { fftSize: 2048 });
+          source.connect(analyser);
+
+          const dataArray = new Float32Array(analyser.frequencyBinCount);
+          analyser.getFloatFrequencyData(dataArray);
+
+          resolve(dataArray);
+        });
+      };
+
+      const displayResults = (results) => {
+        let outputString = '';
+        for (const result of results.results) {
+          outputString += `${result.label}: ${result.value.toFixed(3)}\n`;
+        }
+        document.getElementById('myDiv01').innerText = outputString;
+      };
+    </script>
+  </div>
 </body>
-</html>
