@@ -1,120 +1,61 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Edge Impulse Web Application</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Classification</title>
 </head>
 <body>
   <div id="main">
-    <table border=1 style="position:absolute; left:800px; top:0px;">
-      <tr><td>
-        Version 0.9.19 <br>
-        <div id="description">
-          <div id="description-title" style="font-size:30px">Demo Edge Impulse WASM</div>
-          Frequency ms <input type="text" id="myText01" value="130" onChange="{
-             myFrequencyMs = this.value;
-             clearInterval(myTimer01);
-             myTimer01 = setInterval(myAudioNow, myFrequencyMs);
-          }"><br>
-          <div id="myDiv01" style="font-size:30px">...</div>
-          Stop Data Collection: <input type="checkbox" id="myCheckbox01"><br>
-          Stop All Sounds <input type="checkbox" id="myCheckbox02sounds"><br>
-          Stop 0 (First) label sound: <input type="checkbox" id="myCheckbox03lable0" checked=true><br>
-          <textarea id="myTextArea01" style="display:none;" rows=10 cols=70>...</textarea> <br> <br> <br>
-        </div>
-      </td></tr>
-    </table>
+    <audio id="audio" controls></audio>
+    <div id="classification-results"></div>
   </div>
 
   <script src="edge-impulse-standalone.js"></script>
 
-  <audio preload="auto" id="mySound0" src="audio1.mp3"></audio>
-  <audio preload="auto" id="mySound1" src="audio2.mp3"></audio>
-  <audio preload="auto" id="mySound2" src="audio3.mp3"></audio>
-  <audio preload="auto" id="mySound3" src="audio4.mp3"></audio>
-  <audio preload="auto" id="mySound4" src="audio5.mp3"></audio>
-
   <script>
-    let myTimer01 = 0;
-    let myOutputString = '';
-    let myFrequencyMs = document.getElementById('myText01').value;
+    const classifier = new EdgeImpulseClassifier();
+    let audioContext;
+    let microphone;
 
-    async function setupAudio() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const audioContext = new AudioContext();
-        const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048;
-        source.connect(analyser);
-
-        return { audioContext, analyser };
-      } catch (err) {
-        console.error('Error accessing microphone:', err);
-      }
+    async function setupMicrophone() {
+      audioContext = new AudioContext();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      microphone = audioContext.createMediaStreamSource(stream);
     }
 
-    async function classifyAudioData(analyser) {
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Float32Array(bufferLength);
-      analyser.getFloatTimeDomainData(dataArray);
-
-      // Classify audio data and update UI
-      const classifier = new EdgeImpulseClassifier();
+    async function startClassification() {
       await classifier.init();
-      const results = await classifier.classify(dataArray);
 
-      updateClassificationResults(results);
+      microphone.connect(audioContext.destination);
+
+      microphone.onaudioprocess = async function (event) {
+        const inputData = event.inputBuffer.getChannelData(0);
+        const results = await classifier.classify(inputData);
+        displayResults(results);
+      };
     }
 
-    function updateClassificationResults(results) {
-      const labels = ['Label 1', 'Label 2', 'Label 3', 'Label 4', 'Label 5'];
+    function displayResults(results) {
+      const classificationResultsDiv = document.getElementById('classification-results');
+      classificationResultsDiv.innerHTML = '';
 
-      let myTemp = '<table border=1 style="font-size:30px">';
-      for (let i = 0; i < results.results.length; i++) {
-        myTemp += `<tr><td>${labels[i]}</td><td>${results.results[i].value.toFixed(3)}</td></tr>`;
+      const table = document.createElement('table');
+      for (const result of results.results) {
+        const row = table.insertRow();
+        const labelCell = row.insertCell(0);
+        const valueCell = row.insertCell(1);
+        labelCell.textContent = result.label;
+        valueCell.textContent = result.value.toFixed(3);
       }
-      myTemp += '</table>';
-
-      document.getElementById('myDiv01').innerHTML = 'Anomaly: ' + results.anomaly + '<br>' + myTemp;
+      classificationResultsDiv.appendChild(table);
     }
 
-    async function setupPage() {
-      const { audioContext, analyser } = await setupAudio();
-
-      // Start audio classification
-      myTimer01 = setInterval(() => classifyAudioData(analyser), myFrequencyMs);
-    }
-
-    // Initialize the page
-    setupPage();
-  </script>
-
-  <script>
-    // Provided code snippet integrated here
-    for (let i = 0; i < results.results.length; i++) {
-      if (myBestClassificationNumber == i) {   // check if this is the best one
-        if (!document.getElementById('myCheckbox02sounds').checked) {
-          if (!document.getElementById('myCheckbox03lable0').checked) {
-            if (i == 0) { document.getElementById('mySound0').currentTime = 0; document.getElementById('mySound0').play() }
-          }
-          if (i == 1) { document.getElementById('mySound1').currentTime = 0; document.getElementById('mySound1').play() }
-          if (i == 2) { document.getElementById('mySound2').currentTime = 0; document.getElementById('mySound2').play() }
-          if (i == 3) { document.getElementById('mySound3').currentTime = 0; document.getElementById('mySound3').play() }
-          if (i == 4) { document.getElementById('mySound4').currentTime = 0; document.getElementById('mySound4').play() }
-        }
-
-        myTemp += '<tr><td>' + results.results[i].label + '</td><td><font style=\'color:yellow; background-color:blue;\'>' + results.results[i].value.toFixed(3) + '</font></td></tr>'
-      } else {
-        myTemp += '<tr><td>' + results.results[i].label + '</td><td>' + results.results[i].value.toFixed(3) + '</td></tr>'
-      }
-    }
-
-    myTemp += '</table>'
-    //console.log(results) 
-
-    document.getElementById('myDiv01').innerHTML = ' results.anomaly: ' + results.anomaly + '<br>' + myTemp
+    // Start the microphone and classification process when the page loads
+    window.onload = async function () {
+      await setupMicrophone();
+      await startClassification();
+    };
   </script>
 </body>
 </html>
