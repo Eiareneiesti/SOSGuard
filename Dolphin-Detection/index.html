@@ -25,12 +25,6 @@
   </div>
 </body>
 
-<audio src="path/to/backgroundNoise.wav"></audio>
-<audio src="path/to/Globicephala_macrorhynchus.wav"></audio>
-<audio src="path/to/Grampus_griseus.wav"></audio>
-<audio src="path/to/Lagenodelphis_hosei.wav"></audio>
-<audio src="path/to/Stenella_longirostis.wav"></audio>
-
 <script>
   let myTimer01 = 0;
   let myOutputString = '';
@@ -68,11 +62,7 @@
     for (let i = 0; i < results.results.length; i++) {
       if (myBestClassificationNumber == i) { // check if this is the best one
         if (!document.getElementById('myCheckbox02sounds').checked) {
-          if (i == 0) { document.getElementsByTagName('audio')[0].currentTime = 0; document.getElementsByTagName('audio')[0].play(); }
-          if (i == 1) { document.getElementsByTagName('audio')[1].currentTime = 0; document.getElementsByTagName('audio')[1].play(); }
-          if (i == 2) { document.getElementsByTagName('audio')[2].currentTime = 0; document.getElementsByTagName('audio')[2].play(); }
-          if (i == 3) { document.getElementsByTagName('audio')[3].currentTime = 0; document.getElementsByTagName('audio')[3].play(); }
-          if (i == 4) { document.getElementsByTagName('audio')[4].currentTime = 0; document.getElementsByTagName('audio')[4].play(); }
+          // No need to play audio here, as the model itself handles classification
         }
 
         myTemp += '<tr><td>' + results.results[i].label + '</td><td><font style=\'color:yellow; background-color:blue;\'>' + results.results[i].value.toFixed(3) + '</font></td></tr>';
@@ -86,7 +76,7 @@
   };
 
   // main program!
-  setupPage();
+  setupPage(); // Assuming setupPage() is defined elsewhere
 </script>
 
 <script>
@@ -169,3 +159,4 @@ class EdgeImpulseClassifier {
 }
   
 </script>
+
