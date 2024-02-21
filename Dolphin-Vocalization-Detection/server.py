@@ -1,24 +1,11 @@
-import http.server
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import socketserver
+import BaseHTTPServer, SimpleHTTPServer
 
-PORT = 8082
+port=8000
+print("Running on port %d" % port)
 
-Handler = http.server.SimpleHTTPRequestHandler
+SimpleHTTPServer.SimpleHTTPRequestHandler.extensions_map['.wasm'] = 'application/wasm'
 
-Handler.extensions_map={
-    '.manifest': 'text/cache-manifest',
-    '.html': 'text/html',
-    '.png': 'image/png',
-    '.jpg': 'image/jpg',
-    '.svg': 'image/svg+xml',
-    '.css': 'text/css',
-    '.js': 'application/x-javascript',
-    '.wasm': 'application/wasm',
-    '': 'application/octet-stream', # Default
-    }
+httpd = BaseHTTPServer.HTTPServer(('localhost', port),
+    SimpleHTTPServer.SimpleHTTPRequestHandler)
 
-httpd = socketserver.TCPServer(("", PORT), Handler)
-
-print("Running at http://localhost:" + str(PORT))
 httpd.serve_forever()
