@@ -95,12 +95,14 @@
     <script>
         const sensor = new MicrophoneSensor();
         const grantPermissions = document.querySelector('#grant-permissions-button');
+        const classifier = new edgeImpulseClassifier(); // Initialize the classifier object
 
         const views = {
-            permission: document.querySelector('#permission-view'),
-            inference: document.querySelector('#inferencing-in-progress'),
-            inferenceResult: document.querySelector('#inferencing-result'),
-            classificationElement: document.getElementById('classification')
+        permission: document.querySelector('#permission-view'),
+        inference: document.querySelector('#inferencing-in-progress'),
+        inferenceResult: document.querySelector('#inferencing-result'),
+        classificationElement: document.getElementById('classification')
+       
         };
 
         const windowSize = 5 * 16000;
