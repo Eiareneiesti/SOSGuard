@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Audio Classification Demo</title>
+    <title>Browser inference demo</title>
 
     <style>
         #results {
@@ -12,7 +12,7 @@
     </style>
 </head>
 <body>
-    <h1>Audio Classification Demo</h1>
+    <h1></h1>
 
     <p>
         <button id="start-recording">Start Recording</button>
@@ -21,65 +21,65 @@
 
     <p id="results"></p>
 
+    <script src="edge-impulse-standalone.js"></script>
+    <script src="run-impulse.js"></script>
     <script>
-        const startRecording = async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                chunks = [];
+        (async () => {
+            var classifier = new EdgeImpulseClassifier();
+            await classifier.init();
 
-                mediaRecorder.ondataavailable = (e) => {
-                    chunks.push(e.data);
-                };
+            let project = classifier.getProjectInfo();
+            document.querySelector('h1').textContent = project.owner + ' / ' + project.name + ' (version ' + project.deploy_version + ')';
 
-                mediaRecorder.onstop = async () => {
-                    const blob = new Blob(chunks, { 'type': 'audio/ogg; codecs=opus' });
-                    chunks = [];
-                    
-                    // Send audio data to server for classification
-                    classifyAudio(blob);
-                };
+            let mediaRecorder;
+            let chunks = [];
 
-                mediaRecorder.start();
-                document.getElementById('start-recording').disabled = true;
-                document.getElementById('stop-recording').disabled = false;
-            } catch (err) {
-                console.error('Error: ' + err);
-            }
-        };
+            const startRecording = async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
 
-        const stopRecording = () => {
-            mediaRecorder.stop();
-            document.getElementById('start-recording').disabled = false;
-            document.getElementById('stop-recording').disabled = true;
-        };
+                    mediaRecorder.ondataavailable = (e) => {
+                        chunks.push(e.data);
+                    };
 
-        const classifyAudio = async (audioBlob) => {
-            try {
-                const response = await fetch('/classify-audio', {
-                    method: 'POST',
-                    body: audioBlob
-                });
+                    mediaRecorder.onstop = async () => {
+                        const blob = new Blob(chunks, { 'type': 'audio/ogg; codecs=opus' });
+                        chunks = [];
+                        const audioURL = window.URL.createObjectURL(blob);
 
-                const classificationResult = await response.json();
-                displayClassificationResult(classificationResult);
-            } catch (err) {
-                console.error('Error classifying audio: ', err);
-            }
-        };
+                        const audio = new Audio(audioURL);
+                        audio.controls = true;
+                        document.body.appendChild(audio);
 
-        const displayClassificationResult = (result) => {
-            const resultsContainer = document.getElementById('results');
-            resultsContainer.textContent = JSON.stringify(result, null, 4);
-        };
+                        // Use Edge Impulse for classification
+                        classifier.classifyAudioBlob(blob)
+                            .then(result => {
+                                document.querySelector('#results').textContent = JSON.stringify(result, null, 4);
+                            })
+                            .catch(error => {
+                                console.error('Classification error: ', error);
+                            });
+                    };
 
-        let mediaRecorder;
-        let chunks = [];
+                    mediaRecorder.start();
+                    document.getElementById('start-recording').disabled = true;
+                    document.getElementById('stop-recording').disabled = false;
+                } catch (err) {
+                    console.error('Error: ' + err);
+                }
+            };
 
-        document.getElementById('start-recording').addEventListener('click', startRecording);
-        document.getElementById('stop-recording').addEventListener('click', stopRecording);
+            const stopRecording = () => {
+                mediaRecorder.stop();
+                document.getElementById('start-recording').disabled = false;
+                document.getElementById('stop-recording').disabled = true;
+            };
+
+            document.getElementById('start-recording').addEventListener('click', startRecording);
+            document.getElementById('stop-recording').addEventListener('click', stopRecording);
+        })();
     </script>
 </body>
 </html>
-
 
