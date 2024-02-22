@@ -2,17 +2,10 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Browser inference demo</title>
-
-    <style>
-        #results {
-            font-family: monospace;
-            white-space: pre;
-        }
-    </style>
+    <title>Audio Classification Demo</title>
 </head>
 <body>
-    <h1></h1>
+    <h1>Audio Classification Demo</h1>
 
     <p>
         <button id="start-recording">Start Recording</button>
@@ -21,16 +14,80 @@
 
     <p id="results"></p>
 
-    <script src="edge-impulse-standalone.js"></script>
-    <script src="run-impulse.js"></script>
     <script>
-        (async () => {
-            var classifier = new EdgeImpulseClassifier();
-            await classifier.init();
+        (function() {
+            let classifierInitialized = false;
 
-            let project = classifier.getProjectInfo();
-            document.querySelector('h1').textContent = project.owner + ' / ' + project.name + ' (version ' + project.deploy_version + ')';
+            // Callback when the classifier is initialized
+            Module.onRuntimeInitialized = function() {
+                classifierInitialized = true;
+            };
 
+            let ptrs = {};
+            Module.onMalloc = function onMalloc(ptr, size) {
+                ptrs[ptr] = size;
+            };
+            Module.onFree = function onFree(ptr) {
+                delete ptrs[ptr];
+            };
+
+            class EdgeImpulseClassifier {
+                constructor() {
+                    this._initialized = false;
+                }
+
+                // Initialize the classifier
+                init() {
+                    if (classifierInitialized === true) return Promise.resolve();
+
+                    return new Promise((resolve) => {
+                        Module.onRuntimeInitialized = () => {
+                            resolve();
+                            classifierInitialized = true;
+                        };
+                    });
+                }
+
+                // Perform classification on audio data
+                classify(rawData, debug = false) {
+                    if (!classifierInitialized) throw new Error('Module is not initialized');
+
+                    const obj = this._arrayToHeap(rawData);
+                    let ret = Module.run_classifier(obj.bytes.byteOffset, rawData.length, debug);
+                    Module._free(obj.ptr);
+
+                    if (ret.result !== 0) {
+                        throw new Error('Classification failed (err code: ' + ret.result + ')');
+                    }
+
+                    let jsResult = {
+                        anomaly: ret.anomaly,
+                        results: []
+                    };
+
+                    for (let cx = 0; cx < ret.classification.size(); cx++) {
+                        let c = ret.classification.get(cx);
+                        jsResult.results.push({ label: c.label, value: c.value });
+                    }
+
+                    return jsResult;
+                }
+
+                // Convert JavaScript array to memory heap for C++ consumption
+                _arrayToHeap(data) {
+                    let typedArray = new Float32Array(data);
+                    let numBytes = typedArray.length * typedArray.BYTES_PER_ELEMENT;
+                    let ptr = Module._malloc(numBytes);
+                    let heapBytes = new Uint8Array(Module.HEAPU8.buffer, ptr, numBytes);
+                    heapBytes.set(new Uint8Array(typedArray.buffer));
+                    return { ptr: ptr, bytes: heapBytes };
+                }
+            }
+
+            // Expose EdgeImpulseClassifier to the global scope
+            window.EdgeImpulseClassifier = EdgeImpulseClassifier;
+
+            // Your code for recording audio and classifying it goes here
             let mediaRecorder;
             let chunks = [];
 
@@ -46,19 +103,16 @@
                     mediaRecorder.onstop = async () => {
                         const blob = new Blob(chunks, { 'type': 'audio/ogg; codecs=opus' });
                         chunks = [];
-                        const audioURL = window.URL.createObjectURL(blob);
-
-                        const audio = new Audio(audioURL);
-                        audio.controls = true;
-                        document.body.appendChild(audio);
 
                         // Use Edge Impulse for classification
                         try {
-                            const result = await classifier.classifyAudioBlob(blob);
-                            document.querySelector('#results').textContent = JSON.stringify(result, null, 4);
+                            const classifier = new EdgeImpulseClassifier();
+                            await classifier.init();
+
+                            const result = await classifier.classify(blob);
+                            document.getElementById('results').textContent = JSON.stringify(result, null, 4);
                         } catch (error) {
                             console.error('Classification error: ', error);
-                            document.querySelector('#results').textContent = 'Classification error: ' + error.message;
                         }
                     };
 
@@ -67,7 +121,6 @@
                     document.getElementById('stop-recording').disabled = false;
                 } catch (err) {
                     console.error('Error: ' + err);
-                    document.querySelector('#results').textContent = 'Error: ' + err.message;
                 }
             };
 
