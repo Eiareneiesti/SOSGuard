@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
     <meta charset="utf-8">
@@ -15,6 +15,24 @@
             font-family: Arial, sans-serif;
             /* Changed font-family to Arial, you can replace it with your preferred font */
             white-space: pre;
+        }
+
+        /* Define the style for the flash effect */
+        .flash {
+            animation: flashAnimation 1s linear;
+        }
+
+        /* Define the keyframes for the flash animation */
+        @keyframes flashAnimation {
+            0% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+            100% {
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -65,6 +83,9 @@
                 </div>
             </div>
         </div>
+
+        <!-- Element to display the classification flash -->
+        <div id="classification"></div>
     </div>
 
     <script type="text/javascript" src="./adding/recorder.js"></script>
@@ -78,144 +99,93 @@
         const views = {
             permission: document.querySelector('#permission-view'),
             inference: document.querySelector('#inferencing-in-progress'),
-            inferenceResult: document.querySelector('#inferencing-result')
+            inferenceResult: document.querySelector('#inferencing-result'),
+            classificationElement: document.getElementById('classification')
         };
 
-        // store results here so we don't invoke the classifier again for the same window
-                    const classifyCache = {};
-            
-                    grantPermissions.onclick = ev => {
-                        ev.preventDefault();
-            
-                        if (!sensor.hasSensor()) {
-                            return alert('Your device does not seem to have a microphone');
-                        }
-            
-                        sensor.checkPermissions(true).then(async (result) => {
-                            if (result) {
-                                const classifier = window.classifier = new EdgeImpulseClassifier();
-                                try {
-                                    await classifier.init();
-            
-                                    views.permission.style.display = 'none';
-                                    views.inference.style.display = '';
-            
-                                    let allData = [];
-                                    let allClassifications = [];
-                                    let recordingInterval;
-                                    let detectionStarted = null;
-            
-                                    const startRecording = () => {
-                                        recordingInterval = setInterval(() => {
-                                            sensor.takeSample(2000, 16000, () => {}).then(onSampleComplete);
-                                        }, 5000);
-                                    };
-            
-                                    const stopRecording = () => {
-                                        clearInterval(recordingInterval);
-                                    };
-            
-                                    const onSampleComplete = (obj) => {
-                                        allData = allData.concat(obj.values);
-                                        console.log(Date.now(), 'allData is', allData.length / 16000, 'seconds');
-            
-                                        const windowSize = 5 * 16000;
-                                        const windowStep = 1 * 16000;
-                                        const classifyWindowLength = 1 * 16000;
-                                        const classifyWindowOverlap = 0.25 * 16000;
-            
-                                        // if we have at least one window of data...
-                                        if (allData.length >= windowSize) {
-                                            let window = allData.slice(allData.length - windowSize, allData.length);
-            
-                                            let GlobicephalaMacrorhynchusCount = 0;
-                                            let GrampusGriseusCount = 0;
-                                            let LagenodelphisHoseiCount = 0;
-                                            let StenellaLongirostisCount = 0;
-            
-                                            // in here we'll take 1 second slices, with 300 ms. overlap that we then classify (total 14 windows)
-                                            console.time('classifyWindow');
-                                            for (let wx = 0; wx <= windowSize - classifyWindowLength; wx += classifyWindowOverlap) {
-                                                const cacheKey = allData.length - windowSize + wx;
-            
-                                                let classifyResult;
-                                                if (!classifyCache[cacheKey]) {
-                                                    let slice = window.slice(wx, wx + classifyWindowLength);
-            
-                                                    classifyCache[cacheKey] = classifier.classify(slice, false);
-                                                }
-            
-                                                classifyResult = classifyCache[cacheKey];
-                                                let GlobicephalaMacrorhynchus = classifyResult.results.find(r => r.label === 'Globicephala macrorhynchus').value;
-                                                let GrampusGriseus = classifyResult.results.find(r => r.label === 'Grampus griseus').value;
-                                                let LagenodelphisHosei = classifyResult.results.find(r => r.label === 'Lagenodelphis hosei').value;
-                                                let StenellaLongirostis = classifyResult.results.find(r => r.label === 'Stenella longirostis').value;
-            
-                                                if (GlobicephalaMacrorhynchus >= 0.6) {
-                                                    GlobicephalaMacrorhynchusCount++;
-                                                } else if (GrampusGriseus >= 0.6) {
-                                                    GrampusGriseusCount++;
-                                                } else if (LagenodelphisHosei >= 0.6) {
-                                                    LagenodelphisHoseiCount++;
-                                                } else if (StenellaLongirostis >= 0.6) {
-                                                    StenellaLongirostisCount++;
-                                                }
-                                            }
-                                            console.timeEnd('classifyWindow');
-            
-                                            let totalCount = GlobicephalaMacrorhynchusCount + GrampusGriseusCount + LagenodelphisHoseiCount + StenellaLongirostisCount;
-                                            let conclusion = 'uncertain';
-                                            if (GlobicephalaMacrorhynchusCount / totalCount >= 0.6) {
-                                                allClassifications.push('Globicephala macrorhynchus');
-                                                conclusion = 'Globicephala macrorhynchus';
-                                            } else if (GrampusGriseusCount / totalCount >= 0.8) {
-                                                allClassifications.push('Grampus griseus');
-                                                conclusion = 'Grampus griseus';
-                                            } else if (LagenodelphisHoseiCount / totalCount >= 0.6) {
-                                                allClassifications.push('Lagenodelphis hosei');
-                                                conclusion = 'Lagenodelphis hosei';
-                                            } else if (StenellaLongirostisCount / totalCount >= 0.6) {
-                                                allClassifications.push('Stenella longirostis');
-                                                conclusion = 'Stenella longirostis';
-                                            } else {
-                                                allClassifications.push('uncertain');
-                                                // totalUncertain++;
-                                            }
-            
-                                            // Display the conclusion
-                                            console.log('Classification:', conclusion);
-                                        }
-                                    };
-            
-                                    // Start recording
-                                    startRecording();
-            
-                                    // Stop recording after a specific time or condition
-                                    setTimeout(() => {
-                                        stopRecording();
-                                    }, 60000); // Stop after 1 minute
-                                } catch (error) {
-                                    console.error('Error initializing classifier:', error);
-                                    alert('Error initializing classifier: ' + error.message);
-                                }
-                            } else {
-                                alert('User has rejected microphone permissions');
-                            }
-                        });
-                       // start up the sensor
-                        await sensor.takeSample(200, 16000, () => {});
+        const windowSize = 5 * 16000;
+        const classifyWindowLength = 1 * 16000;
+        const classifyWindowOverlap = 0.25 * 16000;
 
-                        // then take 1s of data
-                        sensor.takeSample(1000, 16000, () => {}).then(onSampleComplete);
-                    } catch (error) {
-                        console.error('Error initializing classifier:', error);
-                        alert('Error initializing classifier: ' + error.message);
+        async function classifyData() {
+            const allData = []; // Assume you have data here
+            const classifyCache = {}; // Your classification cache
+
+            // if we have at least one window of data...
+            if (allData.length >= windowSize) {
+                let window = allData.slice(allData.length - windowSize, allData.length);
+
+                // Iterate through each window
+                for (let wx = 0; wx <= windowSize - classifyWindowLength; wx += classifyWindowOverlap) {
+                    const cacheKey = allData.length - windowSize + wx;
+
+                    let classifyResult;
+                    if (!classifyCache[cacheKey]) {
+                        let slice = window.slice(wx, wx + classifyWindowLength);
+
+                        classifyCache[cacheKey] = classifier.classify(slice, false);
                     }
-                } else {
-                    alert('User has rejected microphone permissions');
+
+                    classifyResult = classifyCache[cacheKey];
+
+                    // Process the classification result
+                    let classifications = classifyResult.results.map(result => {
+                        return {
+                            label: result.label,
+                            value: result.value
+                        };
+                    });
+
+                    // Show the classification live
+                    console.log('Classification at position', (allData.length / 16000) + 's:', classifications);
+                    // Update UI with the classification if needed
+                    updateUI(classifications);
                 }
-            });
+            }
         }
+
+        function updateUI(classifications) {
+            // Clear previous classification
+            views.classificationElement.innerHTML = '';
+
+            // Create a new element to display the classification
+            let flashElement = document.createElement('div');
+            flashElement.classList.add('flash');
+
+            // Construct the text for the flash
+            let flashText = classifications.map(classification => `${classification.label}: ${classification.value}`).join(', ');
+
+            // Set the text content of the flash element
+            flashElement.textContent = flashText;
+
+            // Append the flash element to the classification element
+            views.classificationElement.appendChild(flashElement);
+
+            // After a short delay, remove the flash element
+            setTimeout(() => {
+                views.classificationElement.removeChild(flashElement);
+            }, 1000); // Adjust the delay as needed (in milliseconds)
+        }
+
+        // Assuming you have code to handle permission request and microphone sampling
+        // Add event listener to grant permissions button
+        grantPermissions.addEventListener('click', async () => {
+            // Request microphone permissions and start sampling
+            const permissionGranted = await sensor.requestPermissions();
+            if (permissionGranted) {
+                // Display inference UI
+                views.permission.style.display = 'none';
+                views.inference.style.display = 'block';
+
+                // Start sampling data
+                await sensor.takeSample(200, 16000, () => {});
+
+                // then take 1s of data
+                sensor.takeSample(1000, 16000, classifyData);
+            } else {
+                alert('User has rejected microphone permissions');
+            }
+        });
     </script>
 </body>
 
