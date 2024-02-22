@@ -47,7 +47,7 @@
             async function startRecording() {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const mediaRecorder = new MediaRecorder(stream);
+                    const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/wav' }); // Specify WAV format
                     const audioChunks = [];
 
                     mediaRecorder.addEventListener('dataavailable', event => {
@@ -55,7 +55,7 @@
                     });
 
                     mediaRecorder.addEventListener('stop', async () => {
-                        const audioBlob = new Blob(audioChunks);
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' }); // Specify WAV type
                         const audioUrl = URL.createObjectURL(audioBlob);
 
                         const audio = new Audio(audioUrl);
@@ -84,7 +84,7 @@
                     return await classifier.classifyBlob(audioBlob);
                 } catch (error) {
                     console.error('Error classifying audio:', error);
-                    return { error: 'Error classifying audio' };
+                    return { error: error.message }; // Return the error message for debugging
                 }
             }
         })();
