@@ -2,32 +2,22 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Browser inference demo</title>
-
-    <style>
-        #results {
-            font-family: monospace;
-            white-space: pre;
-        }
-    </style>
+    <title>Edge Impulse Audio Classification Demo</title>
 </head>
 <body>
-    <h1></h1>
+    <h1>Edge Impulse Audio Classification Demo</h1>
 
     <p>
         <button id="record-button">Start Recording</button>
     </p>
-    <p id="results"></p>
 
-    <script src="edge-impulse-standalone.js"></script>
-    <script src="run-impulse.js"></script>
+    <div id="results"></div>
+
+    <script src="https://cdn.edgeimpulse.com/edge-impulse-sdk-latest.js"></script>
     <script>
         (async () => {
-            var classifier = new EdgeImpulseClassifier();
+            const classifier = new EdgeImpulseClassifier();
             await classifier.init();
-
-            let project = classifier.getProjectInfo();
-            document.querySelector('h1').textContent = project.owner + ' / ' + project.name + ' (version ' + project.deploy_version + ')';
 
             const recordButton = document.getElementById('record-button');
             let isRecording = false;
@@ -47,7 +37,7 @@
             async function startRecording() {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/wav' }); // Specify WAV format
+                    const mediaRecorder = new MediaRecorder(stream);
                     const audioChunks = [];
 
                     mediaRecorder.addEventListener('dataavailable', event => {
@@ -55,28 +45,23 @@
                     });
 
                     mediaRecorder.addEventListener('stop', async () => {
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' }); // Specify WAV type
-                        const audioUrl = URL.createObjectURL(audioBlob);
-
-                        const audio = new Audio(audioUrl);
-                        audio.controls = true;
-                        document.body.appendChild(audio);
-
+                        const audioBlob = new Blob(audioChunks);
                         const classificationResult = await classifyAudio(audioBlob);
-                        document.querySelector('#results').textContent = JSON.stringify(classificationResult, null, 4);
+
+                        document.getElementById('results').textContent = JSON.stringify(classificationResult, null, 2);
                     });
 
                     mediaRecorder.start();
                     setTimeout(() => {
                         mediaRecorder.stop();
-                    }, 2000); // Record for 2 seconds
+                    }, 3000); // Record for 3 seconds
                 } catch (error) {
                     console.error('Error starting recording:', error);
                 }
             }
 
             async function stopRecording() {
-                // This function will be handled in startRecording() when the mediaRecorder stops automatically after 2 seconds.
+                // This function will be handled in startRecording() when the mediaRecorder stops automatically after 3 seconds.
             }
 
             async function classifyAudio(audioBlob) {
