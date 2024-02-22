@@ -82,112 +82,127 @@
         };
 
         // store results here so we don't invoke the classifier again for the same window
-        const classifyCache = {};
-
-        grantPermissions.onclick = ev => {
-            ev.preventDefault();
-
-            if (!sensor.hasSensor()) {
-                return alert('Your device does not seem to have a microphone');
-            }
-
-            sensor.checkPermissions(true).then(async (result) => {
-                if (result) {
-                    const classifier = window.classifier = new EdgeImpulseClassifier();
-                    try {
-                        await classifier.init();
-
-                        views.permission.style.display = 'none';
-                        views.inference.style.display = '';
-
-                        let allData = [];
-                        let allClassifications = [];
-                        let detectionStarted = null;
-
-                        const startRecording = () => {
-                            recordingInterval = setInterval(() => {
-                                sensor.takeSample(2000, 16000, () => {}).then(onSampleComplete);
-                            }, 5000);
-                        };
-
-                        const stopRecording = () => {
-                            clearInterval(recordingInterval);
-                        };
-
-                        const onSampleComplete = (obj) => {
-                            sensor.takeSample(1000, 16000, () => {}).then(onSampleComplete);
-
-                            allData = allData.concat(obj.values);
-                            console.log(Date.now(), 'allData is', allData.length / 16000, 'seconds');
-
-                            const windowSize = 5 * 16000;
-                            const windowStep = 1 * 16000;
-                            const classifyWindowLength = 1 * 16000;
-                            const classifyWindowOverlap = 0.25 * 16000;
-
-                            // if we have at least one window of data...
-                            if (allData.length >= windowSize) {
-                                let window = allData.slice(allData.length - windowSize, allData.length);
-
-                                let GlobicephalaMacrorhynchusCount = 0;
-                                let GrampusGriseusCount = 0;
-                                let LagenodelphisHoseiCount = 0;
-                                let StenellaLongirostisCount = 0;
-
-                                // in here we'll take 1 second slices, with 300 ms. overlap that we then classify (total 14 windows)
-                                console.time('classifyWindow');
-                                for (let wx = 0; wx <= windowSize - classifyWindowLength; wx += classifyWindowOverlap) {
-                                    const cacheKey = allData.length - windowSize + wx;
-
-                                    let classifyResult;
-                                    if (!classifyCache[cacheKey]) {
-                                        let slice = window.slice(wx, wx + classifyWindowLength);
-
-                                        classifyCache[cacheKey] = classifier.classify(slice, false);
-                                    }
-
-                                    classifyResult = classifyCache[cacheKey];
-                                    let GlobicephalaMacrorhynchus = classifyResult.results.find(r => r.label === 'Globicephala macrorhynchus').value;
-                                    let GrampusGriseus = classifyResult.results.find(r => r.label === 'Grampus griseus').value;
-                                    let LagenodelphisHosei = classifyResult.results.find(r => r.label === 'Lagenodelphis hosei').value;
-                                    let StenellaLongirostis = classifyResult.results.find(r => r.label === 'Stenella longirostis').value;
-
-                                    if (GlobicephalaMacrorhynchus >= 0.6) {
-                                        GlobicephalaMacrorhynchusCount++;
-                                    } else if (GrampusGriseus >= 0.6) {
-                                        GrampusGriseusCount++;
-                                    } else if (LagenodelphisHosei >= 0.6) {
-                                        LagenodelphisHoseiCount++;
-                                    } else if (StenellaLongirostis >= 0.6) {
-                                        StenellaLongirostisCount++;
-                                    }
+                    const classifyCache = {};
+            
+                    grantPermissions.onclick = ev => {
+                        ev.preventDefault();
+            
+                        if (!sensor.hasSensor()) {
+                            return alert('Your device does not seem to have a microphone');
+                        }
+            
+                        sensor.checkPermissions(true).then(async (result) => {
+                            if (result) {
+                                const classifier = window.classifier = new EdgeImpulseClassifier();
+                                try {
+                                    await classifier.init();
+            
+                                    views.permission.style.display = 'none';
+                                    views.inference.style.display = '';
+            
+                                    let allData = [];
+                                    let allClassifications = [];
+                                    let recordingInterval;
+                                    let detectionStarted = null;
+            
+                                    const startRecording = () => {
+                                        recordingInterval = setInterval(() => {
+                                            sensor.takeSample(2000, 16000, () => {}).then(onSampleComplete);
+                                        }, 5000);
+                                    };
+            
+                                    const stopRecording = () => {
+                                        clearInterval(recordingInterval);
+                                    };
+            
+                                    const onSampleComplete = (obj) => {
+                                        allData = allData.concat(obj.values);
+                                        console.log(Date.now(), 'allData is', allData.length / 16000, 'seconds');
+            
+                                        const windowSize = 5 * 16000;
+                                        const windowStep = 1 * 16000;
+                                        const classifyWindowLength = 1 * 16000;
+                                        const classifyWindowOverlap = 0.25 * 16000;
+            
+                                        // if we have at least one window of data...
+                                        if (allData.length >= windowSize) {
+                                            let window = allData.slice(allData.length - windowSize, allData.length);
+            
+                                            let GlobicephalaMacrorhynchusCount = 0;
+                                            let GrampusGriseusCount = 0;
+                                            let LagenodelphisHoseiCount = 0;
+                                            let StenellaLongirostisCount = 0;
+            
+                                            // in here we'll take 1 second slices, with 300 ms. overlap that we then classify (total 14 windows)
+                                            console.time('classifyWindow');
+                                            for (let wx = 0; wx <= windowSize - classifyWindowLength; wx += classifyWindowOverlap) {
+                                                const cacheKey = allData.length - windowSize + wx;
+            
+                                                let classifyResult;
+                                                if (!classifyCache[cacheKey]) {
+                                                    let slice = window.slice(wx, wx + classifyWindowLength);
+            
+                                                    classifyCache[cacheKey] = classifier.classify(slice, false);
+                                                }
+            
+                                                classifyResult = classifyCache[cacheKey];
+                                                let GlobicephalaMacrorhynchus = classifyResult.results.find(r => r.label === 'Globicephala macrorhynchus').value;
+                                                let GrampusGriseus = classifyResult.results.find(r => r.label === 'Grampus griseus').value;
+                                                let LagenodelphisHosei = classifyResult.results.find(r => r.label === 'Lagenodelphis hosei').value;
+                                                let StenellaLongirostis = classifyResult.results.find(r => r.label === 'Stenella longirostis').value;
+            
+                                                if (GlobicephalaMacrorhynchus >= 0.6) {
+                                                    GlobicephalaMacrorhynchusCount++;
+                                                } else if (GrampusGriseus >= 0.6) {
+                                                    GrampusGriseusCount++;
+                                                } else if (LagenodelphisHosei >= 0.6) {
+                                                    LagenodelphisHoseiCount++;
+                                                } else if (StenellaLongirostis >= 0.6) {
+                                                    StenellaLongirostisCount++;
+                                                }
+                                            }
+                                            console.timeEnd('classifyWindow');
+            
+                                            let totalCount = GlobicephalaMacrorhynchusCount + GrampusGriseusCount + LagenodelphisHoseiCount + StenellaLongirostisCount;
+                                            let conclusion = 'uncertain';
+                                            if (GlobicephalaMacrorhynchusCount / totalCount >= 0.6) {
+                                                allClassifications.push('Globicephala macrorhynchus');
+                                                conclusion = 'Globicephala macrorhynchus';
+                                            } else if (GrampusGriseusCount / totalCount >= 0.8) {
+                                                allClassifications.push('Grampus griseus');
+                                                conclusion = 'Grampus griseus';
+                                            } else if (LagenodelphisHoseiCount / totalCount >= 0.6) {
+                                                allClassifications.push('Lagenodelphis hosei');
+                                                conclusion = 'Lagenodelphis hosei';
+                                            } else if (StenellaLongirostisCount / totalCount >= 0.6) {
+                                                allClassifications.push('Stenella longirostis');
+                                                conclusion = 'Stenella longirostis';
+                                            } else {
+                                                allClassifications.push('uncertain');
+                                                // totalUncertain++;
+                                            }
+            
+                                            // Display the conclusion
+                                            console.log('Classification:', conclusion);
+                                        }
+                                    };
+            
+                                    // Start recording
+                                    startRecording();
+            
+                                    // Stop recording after a specific time or condition
+                                    setTimeout(() => {
+                                        stopRecording();
+                                    }, 60000); // Stop after 1 minute
+                                } catch (error) {
+                                    console.error('Error initializing classifier:', error);
+                                    alert('Error initializing classifier: ' + error.message);
                                 }
-                                console.timeEnd('classifyWindow');
-
-                                let totalCount = GlobicephalaMacrorhynchusCount + GrampusGriseusCount + LagenodelphisHoseiCount + StenellaLongirostisCount;
-                                let conclusion = 'uncertain';
-                                if (GlobicephalaMacrorhynchusCount / totalCount >= 0.6) {
-                                    allClassifications.push('Globicephala macrorhynchus');
-                                    conclusion = 'Globicephala macrorhynchus';
-                                } else if (GrampusGriseusCount / totalCount >= 0.8) {
-                                    allClassifications.push('Grampus griseus');
-                                    conclusion = 'Grampus griseus';
-                                } else if (LagenodelphisHoseiCount / totalCount >= 0.6) {
-                                    allClassifications.push('Lagenodelphis hosei');
-                                    conclusion = 'Lagenodelphis hosei';
-                                } else if (StenellaLongirostisCount / totalCount >= 0.6) {
-                                    allClassifications.push('Stenella longirostis');
-                                    conclusion = 'Stenella longirostis';
-                                } else {
-                                    allClassifications.push('uncertain');
-                                    // totalUncertain++;
-                                }
-
-                                // Display the conclusion
-                                console.log('Classification:', conclusion);
+                            } else {
+                                alert('User has rejected microphone permissions');
                             }
-                        };
-                        // start up the sensor
+                        });
+                       // start up the sensor
                         await sensor.takeSample(200, 16000, () => {});
 
                         // then take 1s of data
