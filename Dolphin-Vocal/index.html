@@ -5,11 +5,6 @@
     <title>Browser inference demo</title>
 
     <style>
-        #features {
-            width: 50%;
-            font-size: 18px;
-        }
-
         #results {
             font-family: monospace;
             white-space: pre;
@@ -20,10 +15,8 @@
     <h1></h1>
 
     <p>
-        <input type="text" id="features" placeholder="Paste your features here">
-    </p>
-    <p>
-        <button id="run-inference">Run inference</button>
+        <button id="start-inference">Start Inference</button>
+        <button id="stop-inference" style="display: none;">Stop Inference</button>
     </p>
     <p id="results"></p>
 
@@ -37,16 +30,47 @@
             let project = classifier.getProjectInfo();
             document.querySelector('h1').textContent = project.owner + ' / ' + project.name + ' (version ' + project.deploy_version + ')';
 
-            document.querySelector('#run-inference').onclick = () => {
-                try {
-                    let features = document.querySelector('#features').value.split(',').map(x => Number(x.trim()));
-                    let res = classifier.classify(features);
-                    document.querySelector('#results').textContent = JSON.stringify(res, null, 4);
+            let mediaRecorder;
+            let chunks = [];
+
+            async function startRecording() {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+
+                mediaRecorder.ondataavailable = function (event) {
+                    chunks.push(event.data);
                 }
-                catch (ex) {
-                    alert('Failed to classify: ' + (ex.message || ex.toString()));
+
+                mediaRecorder.onstop = async function () {
+                    const blob = new Blob(chunks, { 'type': 'audio/ogg; codecs=opus' });
+                    chunks = [];
+                    const audioURL = window.URL.createObjectURL(blob);
+                    const audio = new Audio(audioURL);
+                    
+                    // Extract features from audio
+                    const features = await classifier.extractFeaturesFromAudio(audio);
+                    
+                    // Classify features
+                    try {
+                        const res = classifier.classify(features);
+                        document.querySelector('#results').textContent = JSON.stringify(res, null, 4);
+                    } catch (ex) {
+                        alert('Failed to classify: ' + (ex.message || ex.toString()));
+                    }
                 }
-            };
+
+                mediaRecorder.start();
+                document.getElementById('start-inference').style.display = 'none';
+                document.getElementById('stop-inference').style.display = 'block';
+            }
+
+            document.getElementById('start-inference').addEventListener('click', startRecording);
+
+            document.getElementById('stop-inference').addEventListener('click', function () {
+                mediaRecorder.stop();
+                document.getElementById('start-inference').style.display = 'block';
+                document.getElementById('stop-inference').style.display = 'none';
+            });
         })();
     </script>
 </body>
