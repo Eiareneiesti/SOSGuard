@@ -53,13 +53,13 @@
                         document.body.appendChild(audio);
 
                         // Use Edge Impulse for classification
-                        classifier.classifyAudioBlob(blob)
-                            .then(result => {
-                                document.querySelector('#results').textContent = JSON.stringify(result, null, 4);
-                            })
-                            .catch(error => {
-                                console.error('Classification error: ', error);
-                            });
+                        try {
+                            const result = await classifier.classifyAudioBlob(blob);
+                            document.querySelector('#results').textContent = JSON.stringify(result, null, 4);
+                        } catch (error) {
+                            console.error('Classification error: ', error);
+                            document.querySelector('#results').textContent = 'Classification error: ' + error.message;
+                        }
                     };
 
                     mediaRecorder.start();
@@ -67,6 +67,7 @@
                     document.getElementById('stop-recording').disabled = false;
                 } catch (err) {
                     console.error('Error: ' + err);
+                    document.querySelector('#results').textContent = 'Error: ' + err.message;
                 }
             };
 
@@ -82,4 +83,3 @@
     </script>
 </body>
 </html>
-
