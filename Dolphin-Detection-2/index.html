@@ -101,7 +101,17 @@
                      let allData = [];
                      let allClassifications = [];
                      let detectionStarted = null;
-
+                     
+                     const startRecording = () => {
+                     recordingInterval = setInterval(() => {
+                         sensor.takeSample(2000, 16000, () => {}).then(onSampleComplete);
+                     }, 5000);
+                     };
+        
+                     const stopRecording = () => {
+                        clearInterval(recordingInterval);
+                     };
+                    
                      const onSampleComplete = (obj) => {
                          sensor.takeSample(1000, 16000, () => {}).then(onSampleComplete);
 
@@ -126,20 +136,20 @@
                              console.time('classifyWindow');
                              for (let wx = 0; wx <= windowSize - classifyWindowLength; wx += classifyWindowOverlap) {
                                  const cacheKey = allData.length - windowSize + wx;
-                        
+        
                                  let classifyResult;
                                  if (!classifyCache[cacheKey]) {
                                      let slice = window.slice(wx, wx + classifyWindowLength);
-                        
+        
                                      classifyCache[cacheKey] = classifier.classify(slice, false);
                                  }
-                        
+        
                                  classifyResult = classifyCache[cacheKey];
                                  let GlobicephalaMacrorhynchus = classifyResult.results.find(r => r.label === 'Globicephala macrorhynchus').value;
                                  let GrampusGriseus = classifyResult.results.find(r => r.label === 'Grampus griseus').value;
                                  let LagenodelphisHosei = classifyResult.results.find(r => r.label === 'Lagenodelphis hosei').value;
                                  let StenellaLongirostis = classifyResult.results.find(r => r.label === 'Stenella longirostis').value;
-                        
+        
                                  if (GlobicephalaMacrorhynchus >= 0.6) {
                                      GlobicephalaMacrorhynchusCount++;
                                  } else if (GrampusGriseus >= 0.6) {
@@ -151,7 +161,7 @@
                                  }
                              }
                              console.timeEnd('classifyWindow');
-                        
+        
                              let totalCount = GlobicephalaMacrorhynchusCount + GrampusGriseusCount + LagenodelphisHoseiCount + StenellaLongirostisCount;
                              let conclusion = 'uncertain';
                              if (GlobicephalaMacrorhynchusCount / totalCount >= 0.6) {
@@ -169,8 +179,11 @@
                              } else {
                                  allClassifications.push('uncertain');
                                  // totalUncertain++;
-                             } 
-                         }  
+                             }
+        
+                            // Display the conclusion
+                               console.log('Classification:', conclusion);
+                        }
                     };
                     // start up the sensor
                     await sensor.takeSample(200, 16000, () => {});
