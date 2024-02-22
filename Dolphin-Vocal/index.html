@@ -2,137 +2,92 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Audio Classification Demo</title>
+    <title>Real-time Audio Classification</title>
+
+    <style>
+        #results {
+            font-family: monospace;
+            white-space: pre;
+        }
+    </style>
 </head>
 <body>
-    <h1>Audio Classification Demo</h1>
+    <h1>Real-time Audio Classification</h1>
 
     <p>
-        <button id="start-recording">Start Recording</button>
-        <button id="stop-recording" disabled>Stop Recording</button>
+        <button id="start-listening">Start Listening</button>
+        <button id="stop-listening">Stop Listening</button>
     </p>
-
     <p id="results"></p>
 
     <script>
-        (function() {
-            let classifierInitialized = false;
+        // Initialize Edge Impulse Classifier
+        var classifier = new EdgeImpulseClassifier();
+        classifier.init().then(() => {
+            console.log('Classifier initialized successfully.');
+        }).catch(err => {
+            console.error('Failed to initialize classifier:', err);
+        });
 
-            // Callback when the classifier is initialized
-            Module.onRuntimeInitialized = function() {
-                classifierInitialized = true;
-            };
+        // Audio context and stream variables
+        let audioContext;
+        let audioStream;
+        let isListening = false;
 
-            let ptrs = {};
-            Module.onMalloc = function onMalloc(ptr, size) {
-                ptrs[ptr] = size;
-            };
-            Module.onFree = function onFree(ptr) {
-                delete ptrs[ptr];
-            };
+        // Start listening button
+        document.querySelector('#start-listening').onclick = () => {
+            startListening();
+        };
 
-            class EdgeImpulseClassifier {
-                constructor() {
-                    this._initialized = false;
-                }
+        // Stop listening button
+        document.querySelector('#stop-listening').onclick = () => {
+            stopListening();
+        };
 
-                // Initialize the classifier
-                init() {
-                    if (classifierInitialized === true) return Promise.resolve();
+        // Function to start listening to microphone
+        async function startListening() {
+            try {
+                // Access user's microphone
+                audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new AudioContext();
+                const microphone = audioContext.createMediaStreamSource(audioStream);
 
-                    return new Promise((resolve) => {
-                        Module.onRuntimeInitialized = () => {
-                            resolve();
-                            classifierInitialized = true;
-                        };
-                    });
-                }
+                // Start processing audio
+                const scriptNode = audioContext.createScriptProcessor(4096, 1, 1);
+                scriptNode.onaudioprocess = processAudio;
+                microphone.connect(scriptNode);
+                scriptNode.connect(audioContext.destination);
 
-                // Perform classification on audio data
-                classify(rawData, debug = false) {
-                    if (!classifierInitialized) throw new Error('Module is not initialized');
-
-                    const obj = this._arrayToHeap(rawData);
-                    let ret = Module.run_classifier(obj.bytes.byteOffset, rawData.length, debug);
-                    Module._free(obj.ptr);
-
-                    if (ret.result !== 0) {
-                        throw new Error('Classification failed (err code: ' + ret.result + ')');
-                    }
-
-                    let jsResult = {
-                        anomaly: ret.anomaly,
-                        results: []
-                    };
-
-                    for (let cx = 0; cx < ret.classification.size(); cx++) {
-                        let c = ret.classification.get(cx);
-                        jsResult.results.push({ label: c.label, value: c.value });
-                    }
-
-                    return jsResult;
-                }
-
-                // Convert JavaScript array to memory heap for C++ consumption
-                _arrayToHeap(data) {
-                    let typedArray = new Float32Array(data);
-                    let numBytes = typedArray.length * typedArray.BYTES_PER_ELEMENT;
-                    let ptr = Module._malloc(numBytes);
-                    let heapBytes = new Uint8Array(Module.HEAPU8.buffer, ptr, numBytes);
-                    heapBytes.set(new Uint8Array(typedArray.buffer));
-                    return { ptr: ptr, bytes: heapBytes };
-                }
+                isListening = true;
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
             }
+        }
 
-            // Expose EdgeImpulseClassifier to the global scope
-            window.EdgeImpulseClassifier = EdgeImpulseClassifier;
+        // Function to stop listening to microphone
+        function stopListening() {
+            if (audioStream) {
+                audioStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+            isListening = false;
+        }
 
-            // Your code for recording audio and classifying it goes here
-            let mediaRecorder;
-            let chunks = [];
+        // Function to process audio for classification
+        function processAudio(event) {
+            if (!isListening) return;
 
-            const startRecording = async () => {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
+            const inputData = event.inputBuffer.getChannelData(0);
+            // You need to extract features from the inputData here
 
-                    mediaRecorder.ondataavailable = (e) => {
-                        chunks.push(e.data);
-                    };
+            // Perform classification using the extracted features
+            const classificationResult = classifier.classify(inputData);
 
-                    mediaRecorder.onstop = async () => {
-                        const blob = new Blob(chunks, { 'type': 'audio/ogg; codecs=opus' });
-                        chunks = [];
-
-                        // Use Edge Impulse for classification
-                        try {
-                            const classifier = new EdgeImpulseClassifier();
-                            await classifier.init();
-
-                            const result = await classifier.classify(blob);
-                            document.getElementById('results').textContent = JSON.stringify(result, null, 4);
-                        } catch (error) {
-                            console.error('Classification error: ', error);
-                        }
-                    };
-
-                    mediaRecorder.start();
-                    document.getElementById('start-recording').disabled = true;
-                    document.getElementById('stop-recording').disabled = false;
-                } catch (err) {
-                    console.error('Error: ' + err);
-                }
-            };
-
-            const stopRecording = () => {
-                mediaRecorder.stop();
-                document.getElementById('start-recording').disabled = false;
-                document.getElementById('stop-recording').disabled = true;
-            };
-
-            document.getElementById('start-recording').addEventListener('click', startRecording);
-            document.getElementById('stop-recording').addEventListener('click', stopRecording);
-        })();
+            // Display classification result
+            document.querySelector('#results').textContent = JSON.stringify(classificationResult, null, 4);
+        }
     </script>
 </body>
 </html>
