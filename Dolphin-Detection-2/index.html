@@ -1,49 +1,40 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 
 <head>
     <meta charset="utf-8">
-    <title>SOSGuard</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <style>
-        #features {
-            width: 50%;
-            font-size: 18px;
-        }
-
-        #results {
-            font-family: Arial, sans-serif;
-            /* Changed font-family to Arial, you can replace it with your preferred font */
-            white-space: pre;
-        }
-
-        /* Define the style for the flash effect */
-        .flash {
-            animation: flashAnimation 1s linear;
-        }
-
-        /* Define the keyframes for the flash animation */
-        @keyframes flashAnimation {
-            0% {
-                opacity: 1;
-            }
-            50% {
-                opacity: 0.5;
-            }
-            100% {
-                opacity: 1;
-            }
-        }
-    </style>
+    <title>Shower tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0,user-scalable=0" />
+    <link rel="stylesheet" href="./assets/argon-dashboard.css">
+    <link rel="stylesheet" href="./fontawesome-free/css/all.min.css">
+    <link rel="stylesheet" href="./assets/mobileclient.css">
+    <!-- generics -->
+    <link rel="icon" href="./assets/favicon-color/favicon-32.png" sizes="32x32">
+    <link rel="icon" href="./assets/favicon-color/favicon-57.png" sizes="57x57">
+    <link rel="icon" href="./assets/favicon-color/favicon-76.png" sizes="76x76">
+    <link rel="icon" href="./assets/favicon-color/favicon-96.png" sizes="96x96">
+    <link rel="icon" href="./assets/favicon-color/favicon-128.png" sizes="128x128">
+    <link rel="icon" href="./assets/favicon-color/favicon-196.png" sizes="196x196">
+    <link rel="icon" href="./assets/favicon-color/favicon-228.png" sizes="228x228">
+    <!-- Android -->
+    <link rel="shortcut icon" href="./assets/favicon-color/favicon-196.png" sizes="196x196">
+    <!-- iOS -->
+    <link rel="apple-touch-icon" href="./assets/favicon-color/favicon-120.png" sizes="120x120">
+    <link rel="apple-touch-icon" href="./assets/favicon-color/favicon-152.png" sizes="152x152">
+    <link rel="apple-touch-icon" href="./assets/favicon-color/favicon-180.png" sizes="180x180">
+    <!-- Windows -->
+    <meta name="msapplication-TileColor" content="#FFFFFF">
+    <meta name="msapplication-TileImage" content="./assets/favicon-color/favicon-144.png">
 </head>
 
 <body>
     <div class="container-fluid">
         <div class="row align-items-center border-bottom" id="header-row">
             <div class="col-auto mt-3 mb-3 pr-0">
+                <img src="./assets/mark.svg">
             </div>
             <div class="col align-middle">
-                <h1 class="text-dark mb-0 border-left pl-4"><i class="fas fa-shower mr-2"></i> SOSGuard</h1>
+                <h1 class="text-dark mb-0 border-left pl-4"><i class="fas fa-shower mr-2"></i> Shower tracker</h1>
             </div>
         </div>
 
@@ -83,108 +74,140 @@
                 </div>
             </div>
         </div>
+    </div>
 
     <script type="text/javascript" src="./adding/recorder.js"></script>
-    <script type="text/javascript" src="./adding/microphone.js"></script>
+    <script type="text/javascript" src="./adding/js/microphone.js"></script>
     <script type="text/javascript" src="./Adding2/edge-impulse-standalone.js"></script>
     <script type="text/javascript" src="./Adding2/classifier.js"></script>
     <script>
         const sensor = new MicrophoneSensor();
         const grantPermissions = document.querySelector('#grant-permissions-button');
-        const classifier = new edgeImpulseClassifier(); // Initialize the classifier object
 
         const views = {
-        permission: document.querySelector('#permission-view'),
-        inference: document.querySelector('#inferencing-in-progress'),
-        inferenceResult: document.querySelector('#inferencing-result'),
-        classificationElement: document.getElementById('classification')
-       
+            permission: document.querySelector('#permission-view'),
+            inference: document.querySelector('#inferencing-in-progress'),
+            inferenceResult: document.querySelector('#inferencing-result')
         };
 
-        const windowSize = 5 * 16000;
-        const classifyWindowLength = 1 * 16000;
-        const classifyWindowOverlap = 0.25 * 16000;
+        // store results here so we don't invoke the classifier again for the same window
+        const classifyCache = {};
 
-        async function classifyData() {
-            const allData = []; // Assume you have data here
-            const classifyCache = {}; // Your classification cache
+        grantPermissions.onclick = ev => {
+            ev.preventDefault();
 
-            // if we have at least one window of data...
-            if (allData.length >= windowSize) {
-                let window = allData.slice(allData.length - windowSize, allData.length);
+            if (!sensor.hasSensor()) {
+                return alert('Your device does not seem to have a microphone');
+            }
 
-                // Iterate through each window
-                for (let wx = 0; wx <= windowSize - classifyWindowLength; wx += classifyWindowOverlap) {
-                    const cacheKey = allData.length - windowSize + wx;
+            sensor.checkPermissions(true).then(async (result) => {
+                if (result) {
+                    const classifier = window.classifier = new EdgeImpulseClassifier();
+                    await classifier.init();
 
-                    let classifyResult;
-                    if (!classifyCache[cacheKey]) {
-                        let slice = window.slice(wx, wx + classifyWindowLength);
+                    views.permission.style.display = 'none';
+                    views.inference.style.display = '';
 
-                        classifyCache[cacheKey] = classifier.classify(slice, false);
-                    }
+                    let allData = [];
+                    let allClassifications = [];
+                    let showerStarted = null;
 
-                    classifyResult = classifyCache[cacheKey];
+                    const onSampleComplete = (obj) => {
+                        sensor.takeSample(1000, 16000, () => {}).then(onSampleComplete);
 
-                    // Process the classification result
-                    let classifications = classifyResult.results.map(result => {
-                        return {
-                            label: result.label,
-                            value: result.value
-                        };
-                    });
+                        allData = allData.concat(obj.values);
+                        console.log(Date.now(), 'allData is', allData.length / 16000, 'seconds');
 
-                    // Show the classification live
-                    console.log('Classification at position', (allData.length / 16000) + 's:', classifications);
-                    // Update UI with the classification if needed
-                    updateUI(classifications);
+                        const windowSize = 5 * 16000;
+                        const windowStep = 1 * 16000;
+                        const classifyWindowLength = 1 * 16000;
+                        const classifyWindowOverlap = 0.25 * 16000;
+
+                        // if we have at least one window of data...
+                        if (allData.length >= windowSize) {
+                            let window = allData.slice(allData.length - windowSize, allData.length);
+
+                            let noiseCount = 0;
+                            let showerCount = 0;
+                            let uncertainCount = 0;
+
+                            // in here we'll take 1 second slices, with 300 ms. overlap that we then classify (total 14 windows)
+                            console.time('classifyWindow');
+                            for (let wx = 0; wx <= windowSize - classifyWindowLength; wx += classifyWindowOverlap) {
+                                const cacheKey = allData.length - windowSize + wx;
+
+                                let classifyResult;
+                                if (!classifyCache[cacheKey]) {
+                                    let slice = window.slice(wx, wx + classifyWindowLength);
+
+                                    classifyCache[cacheKey] = classifier.classify(slice, false);
+                                }
+
+                                classifyResult = classifyCache[cacheKey];
+                                let noise = classifyResult.results.find(r => r.label === 'noise').value;
+                                let shower = classifyResult.results.find(r => r.label === 'shower').value;
+
+                                if (noise >= 0.6) {
+                                    noiseCount++;
+                                }
+                                else if (shower >= 0.6) {
+                                    showerCount++;
+                                }
+                                else {
+                                    uncertainCount++;
+                                }
+                            }
+                            console.timeEnd('classifyWindow');
+
+                            let totalCount = noiseCount + showerCount + uncertainCount;
+                            let conclusion = 'uncertain';
+                            if (noiseCount / totalCount >= 0.6) {
+                                allClassifications.push('noise');
+                                conclusion = 'noise';
+                            }
+                            else if (showerCount / totalCount >= 0.8) {
+                                allClassifications.push('shower');
+                                conclusion = 'shower';
+                            }
+                            else {
+                                allClassifications.push('uncertain');
+                                // totalUncertain++;
+                            }
+
+                            console.log('at position', (allData.length / 16000) + 's',
+                                'noise', noiseCount, 'shower', showerCount, 'uncertain', uncertainCount, '(' + conclusion + ')');
+
+                            let begin = allClassifications.length - 5;
+                            if (begin < 0) begin = 0;
+                            if (allClassifications.slice(begin).filter(f => f === 'shower').length >= 3) {
+                                views.inferenceResult.innerHTML = '<i class="fas fa-shower mr-2"></i> Showering';
+                                if (!showerStarted) {
+                                    showerStarted = Date.now();
+                                }
+                            }
+                            else if (showerStarted) {
+                                if (allClassifications.slice(begin).filter(f => f === 'shower').length === 0) {
+                                    views.inferenceResult.textContent = 'Not showering';
+                                    alert('You showered for ' + (Math.floor((Date.now() - showerStarted) / 1000) + 3) + ' seconds');
+                                    showerStarted = null;
+                                }
+                            }
+                            else if (allClassifications.length >= 5) {
+                                views.inferenceResult.textContent = 'Not showering';
+                            }
+                        }
+                    };
+                    // start up the sensor
+                    await sensor.takeSample(200, 16000, () => {});
+
+                    // then take 1s of data
+                    sensor.takeSample(1000, 16000, () => {}).then(onSampleComplete);
                 }
-            }
+                else {
+                    alert('User has rejected microphone permissions');
+                }
+            });
         }
-
-        function updateUI(classifications) {
-            // Clear previous classification
-            views.classificationElement.innerHTML = '';
-
-            // Create a new element to display the classification
-            let flashElement = document.createElement('div');
-            flashElement.classList.add('flash');
-
-            // Construct the text for the flash
-            let flashText = classifications.map(classification => `${classification.label}: ${classification.value}`).join(', ');
-
-            // Set the text content of the flash element
-            flashElement.textContent = flashText;
-
-            // Append the flash element to the classification element
-            views.classificationElement.appendChild(flashElement);
-
-            // After a short delay, remove the flash element
-            setTimeout(() => {
-                views.classificationElement.removeChild(flashElement);
-            }, 1000); // Adjust the delay as needed (in milliseconds)
-        }
-
-        // Assuming you have code to handle permission request and microphone sampling
-        // Add event listener to grant permissions button
-        grantPermissions.addEventListener('click', async () => {
-            // Request microphone permissions and start sampling
-            const permissionGranted = await sensor.requestPermissions();
-            if (permissionGranted) {
-                // Display inference UI
-                views.permission.style.display = 'none';
-                views.inference.style.display = 'block';
-
-                // Start sampling data
-                await sensor.takeSample(200, 16000, () => {});
-
-                // then take 1s of data
-                sensor.takeSample(1000, 16000, classifyData);
-            } else {
-                alert('User has rejected microphone permissions');
-            }
-        });
     </script>
 </body>
-
 </html>
