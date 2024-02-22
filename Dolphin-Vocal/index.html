@@ -52,10 +52,14 @@
                         audio.controls = true;
                         document.body.appendChild(audio);
 
-                        // Convert audio to features (you need to implement this part)
-                        const features = await audioToFeatures(blob);
-                        const res = classifier.classify(features);
-                        document.querySelector('#results').textContent = JSON.stringify(res, null, 4);
+                        // Use Edge Impulse for classification
+                        classifier.classifyAudioBlob(blob)
+                            .then(result => {
+                                document.querySelector('#results').textContent = JSON.stringify(result, null, 4);
+                            })
+                            .catch(error => {
+                                console.error('Classification error: ', error);
+                            });
                     };
 
                     mediaRecorder.start();
@@ -74,16 +78,8 @@
 
             document.getElementById('start-recording').addEventListener('click', startRecording);
             document.getElementById('stop-recording').addEventListener('click', stopRecording);
-
-            // Function to convert audio to features (you need to implement this part)
-            const audioToFeatures = async (audioBlob) => {
-                // Here you need to implement audio feature extraction from the provided audioBlob
-                // This could involve using a library like TensorFlow.js or another audio processing library
-                // Once you have extracted features, return them for classification
-                // For simplicity, you might just return a placeholder or dummy feature vector for now
-                return [0.1, 0.2, 0.3, 0.4, 0.5]; // Dummy feature vector
-            };
         })();
     </script>
 </body>
 </html>
+
