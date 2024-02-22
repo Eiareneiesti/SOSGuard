@@ -37,17 +37,39 @@
             let project = classifier.getProjectInfo();
             document.querySelector('h1').textContent = project.owner + ' / ' + project.name + ' (version ' + project.deploy_version + ')';
 
+            // Access the user's microphone
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const source = audioContext.createMediaStreamSource(mediaStream);
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+            source.connect(analyser);
+
             document.querySelector('#run-inference').onclick = () => {
                 try {
-                    let features = document.querySelector('#features').value.split(',').map(x => Number(x.trim()));
-                    let res = classifier.classify(features);
-                    document.querySelector('#results').textContent = JSON.stringify(res, null, 4);
-                }
-                catch (ex) {
+                    // Record audio for 1 second
+                    setTimeout(() => {
+                        const bufferLength = analyser.frequencyBinCount;
+                        const dataArray = new Uint8Array(bufferLength);
+                        analyser.getByteTimeDomainData(dataArray);
+                        
+                        // Extract features from the recorded audio
+                        let features = extractFeatures(dataArray); // Implement feature extraction
+                        document.querySelector('#features').value = features;
+                    }, 1000);
+                } catch (ex) {
                     alert('Failed to classify: ' + (ex.message || ex.toString()));
                 }
             };
         })();
+
+        // Function to extract features from audio data
+        function extractFeatures(dataArray) {
+            // Implement feature extraction logic here
+            // For simplicity, let's say we're just converting the data array to a string
+            return dataArray.toString();
+        }
     </script>
 </body>
 </html>
+
