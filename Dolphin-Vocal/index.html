@@ -15,8 +15,7 @@
     <h1></h1>
 
     <p>
-        <button id="start-inference">Start Inference</button>
-        <button id="stop-inference" style="display: none;">Stop Inference</button>
+        <button id="record-button">Start Recording</button>
     </p>
     <p id="results"></p>
 
@@ -30,47 +29,55 @@
             let project = classifier.getProjectInfo();
             document.querySelector('h1').textContent = project.owner + ' / ' + project.name + ' (version ' + project.deploy_version + ')';
 
-            let mediaRecorder;
-            let chunks = [];
+            const recordButton = document.getElementById('record-button');
+            let isRecording = false;
+
+            recordButton.addEventListener('click', async () => {
+                if (!isRecording) {
+                    isRecording = true;
+                    recordButton.textContent = 'Stop Recording';
+                    await startRecording();
+                } else {
+                    isRecording = false;
+                    recordButton.textContent = 'Start Recording';
+                    await stopRecording();
+                }
+            });
 
             async function startRecording() {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
+                const mediaRecorder = new MediaRecorder(stream);
+                const audioChunks = [];
 
-                mediaRecorder.ondataavailable = function (event) {
-                    chunks.push(event.data);
-                }
+                mediaRecorder.addEventListener('dataavailable', event => {
+                    audioChunks.push(event.data);
+                });
 
-                mediaRecorder.onstop = async function () {
-                    const blob = new Blob(chunks, { 'type': 'audio/ogg; codecs=opus' });
-                    chunks = [];
-                    const audioURL = window.URL.createObjectURL(blob);
-                    const audio = new Audio(audioURL);
-                    
-                    // Extract features from audio
-                    const features = await classifier.extractFeaturesFromAudio(audio);
-                    
-                    // Classify features
-                    try {
-                        const res = classifier.classify(features);
-                        document.querySelector('#results').textContent = JSON.stringify(res, null, 4);
-                    } catch (ex) {
-                        alert('Failed to classify: ' + (ex.message || ex.toString()));
-                    }
-                }
+                mediaRecorder.addEventListener('stop', async () => {
+                    const audioBlob = new Blob(audioChunks);
+                    const audioUrl = URL.createObjectURL(audioBlob);
+
+                    const audio = new Audio(audioUrl);
+                    audio.controls = true;
+                    document.body.appendChild(audio);
+
+                    const classificationResult = await classifyAudio(audioBlob);
+                    document.querySelector('#results').textContent = JSON.stringify(classificationResult, null, 4);
+                });
 
                 mediaRecorder.start();
-                document.getElementById('start-inference').style.display = 'none';
-                document.getElementById('stop-inference').style.display = 'block';
+                setTimeout(() => {
+                    mediaRecorder.stop();
+                }, 2000); // Record for 2 seconds
             }
 
-            document.getElementById('start-inference').addEventListener('click', startRecording);
+            async function stopRecording() {
+                // This function will be handled in startRecording() when the mediaRecorder stops automatically after 2 seconds.
+            }
 
-            document.getElementById('stop-inference').addEventListener('click', function () {
-                mediaRecorder.stop();
-                document.getElementById('start-inference').style.display = 'block';
-                document.getElementById('stop-inference').style.display = 'none';
-            });
+            async function classifyAudio(audioBlob) {
+                return await classifier.classifyBlob(audioBlob);
+            }
         })();
     </script>
 </body>
