@@ -45,30 +45,34 @@
             });
 
             async function startRecording() {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const mediaRecorder = new MediaRecorder(stream);
-                const audioChunks = [];
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const mediaRecorder = new MediaRecorder(stream);
+                    const audioChunks = [];
 
-                mediaRecorder.addEventListener('dataavailable', event => {
-                    audioChunks.push(event.data);
-                });
+                    mediaRecorder.addEventListener('dataavailable', event => {
+                        audioChunks.push(event.data);
+                    });
 
-                mediaRecorder.addEventListener('stop', async () => {
-                    const audioBlob = new Blob(audioChunks);
-                    const audioUrl = URL.createObjectURL(audioBlob);
+                    mediaRecorder.addEventListener('stop', async () => {
+                        const audioBlob = new Blob(audioChunks);
+                        const audioUrl = URL.createObjectURL(audioBlob);
 
-                    const audio = new Audio(audioUrl);
-                    audio.controls = true;
-                    document.body.appendChild(audio);
+                        const audio = new Audio(audioUrl);
+                        audio.controls = true;
+                        document.body.appendChild(audio);
 
-                    const classificationResult = await classifyAudio(audioBlob);
-                    document.querySelector('#results').textContent = JSON.stringify(classificationResult, null, 4);
-                });
+                        const classificationResult = await classifyAudio(audioBlob);
+                        document.querySelector('#results').textContent = JSON.stringify(classificationResult, null, 4);
+                    });
 
-                mediaRecorder.start();
-                setTimeout(() => {
-                    mediaRecorder.stop();
-                }, 2000); // Record for 2 seconds
+                    mediaRecorder.start();
+                    setTimeout(() => {
+                        mediaRecorder.stop();
+                    }, 2000); // Record for 2 seconds
+                } catch (error) {
+                    console.error('Error starting recording:', error);
+                }
             }
 
             async function stopRecording() {
@@ -76,7 +80,12 @@
             }
 
             async function classifyAudio(audioBlob) {
-                return await classifier.classifyBlob(audioBlob);
+                try {
+                    return await classifier.classifyBlob(audioBlob);
+                } catch (error) {
+                    console.error('Error classifying audio:', error);
+                    return { error: 'Error classifying audio' };
+                }
             }
         })();
     </script>
